@@ -13,7 +13,7 @@ U powershell-u, otići u neki direktorijum gde imate pune permisije i izvršiti 
 
 ```sh
 git clone https://github.com/n-ratinac/web-projekat1.git
-code web-projekat
+code web-projekat1
 ```
 
 ## Instalacija python paketa
