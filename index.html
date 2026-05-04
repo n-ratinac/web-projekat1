@@ -39,7 +39,6 @@
     #canvas {
       border: 1px solid #2a2d35;
       border-radius: 8px;
-      cursor: none;
       display: block;
     }
 
@@ -69,7 +68,7 @@
     let igraci = [];
 
     // ── WebSocket ─────────────────────────────────────────────
-    const ws = new WebSocket('ws://localhost:8765');
+    const ws = new WebSocket('ws://10.0.5.14:8765');
 
     ws.onopen = () => {
       setStatus('connected', 'Konektovan');
