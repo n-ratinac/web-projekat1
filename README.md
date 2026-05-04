@@ -24,4 +24,4 @@ pip install -r requirements.txt
 
 ## Podela posla
 
-U fajlu [ISSUES.md] nalazi se opis stvari koje treba da se urade. Timovi treba da podele posao između sebe i reše što više zadataka.
+U fajlu [ISSUES.md](ISSUES.md) nalazi se opis stvari koje treba da se urade. Timovi treba da podele posao između sebe i reše što više zadataka.
