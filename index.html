@@ -63,11 +63,9 @@
   <script>
     const canvas = document.getElementById('canvas');
     const ctx    = canvas.getContext('2d');
+    const WORLD  = 4000;
 
-    // Moj ID (dobijem od servera u prvoj poruci)
-    let myId = null;
-
-    // Stanje svih igraca koje server šalje
+    let myId   = null;
     let igraci = [];
 
     // ── WebSocket ─────────────────────────────────────────────
@@ -75,25 +73,18 @@
 
     ws.onopen = () => {
       setStatus('connected', 'Konektovan');
-
-      // Šaljemo ime
       ws.send(JSON.stringify({ type: 'join', ime: 'TestIgrac' }));
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
+      if (data.type === 'welcome') {
+        myId = data.id;
+      }
+
       if (data.type === 'game_state') {
         igraci = data.igraci;
-
-        // Ako jos ne znamo nas ID, uzmemo prvi koji odgovara nasem socketU
-        // Server nam šalje sve igrače — prvi put kad primimo poruku,
-        // naš igrac je već u listi (server ga dodaje pre slanja)
-        if (!myId && igraci.length > 0) {
-          // Uzimamo poslednjeg koji se konektovao — to smo mi
-          // (server dodaje pa šalje odmah)
-          myId = igraci[igraci.length - 1].id;
-        }
       }
     };
 
@@ -106,13 +97,13 @@
       document.getElementById('status-text').textContent = text;
     }
 
-    // ── Slanje pozicije miša serveru ──────────────────────────
+    // ── Slanje pozicije miša serveru (world koordinate) ───────
     canvas.addEventListener('mousemove', (e) => {
       if (ws.readyState !== WebSocket.OPEN) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = Math.round(e.clientX - rect.left);
-      const y = Math.round(e.clientY - rect.top);
+      const x = Math.round((e.clientX - rect.left) / canvas.width * WORLD);
+      const y = Math.round((e.clientY - rect.top) / canvas.height * WORLD);
 
       ws.send(JSON.stringify({ type: 'move', x, y }));
     });
@@ -135,31 +126,41 @@
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
 
+      // Skaliranje world → canvas
+      const scaleX = canvas.width / WORLD;
+      const scaleY = canvas.height / WORLD;
+
       // Crtaj svakog igraca
       for (const igrac of igraci) {
         const jesMoj = igrac.id === myId;
 
-        // Krug
-        ctx.beginPath();
-        ctx.arc(igrac.x, igrac.y, 18, 0, Math.PI * 2);
-        ctx.fillStyle = jesMoj ? '#7ef7a0' : '#5ba3f5';
-        ctx.fill();
+        for (const cell of igrac.cells) {
+          const sx = cell.x * scaleX;
+          const sy = cell.y * scaleY;
+          const sr = Math.max(cell.r * scaleX, 3);
 
-        // Border
-        ctx.strokeStyle = jesMoj ? '#4ab870' : '#3a6fa8';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+          // Krug
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fillStyle = jesMoj ? '#7ef7a0' : '#5ba3f5';
+          ctx.fill();
 
-        // Ime iznad
-        ctx.fillStyle = '#fff';
-        ctx.font = '12px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillText(igrac.ime, igrac.x, igrac.y - 24);
+          // Border
+          ctx.strokeStyle = jesMoj ? '#4ab870' : '#3a6fa8';
+          ctx.lineWidth = 2;
+          ctx.stroke();
 
-        // Koordinate ispod
-        ctx.fillStyle = '#555';
-        ctx.font = '10px Courier New';
-        ctx.fillText(`${igrac.x}, ${igrac.y}`, igrac.x, igrac.y + 32);
+          // Ime iznad
+          ctx.fillStyle = '#fff';
+          ctx.font = '12px Courier New';
+          ctx.textAlign = 'center';
+          ctx.fillText(igrac.ime, sx, sy - sr - 6);
+
+          // Koordinate ispod
+          ctx.fillStyle = '#555';
+          ctx.font = '10px Courier New';
+          ctx.fillText(`${Math.round(cell.x)}, ${Math.round(cell.y)}`, sx, sy + sr + 14);
+        }
       }
 
       // Legenda
