@@ -68,8 +68,8 @@ async def handle_client(websocket):
         log(f"Igrac {player_id} uklonjen. Online: {len(connected_clients)}")
 
 async def main():
-    log("WebSocket server startovan na ws://localhost:8765")
-    async with websockets.serve(handle_client, "localhost", 8765):
+    log("WebSocket server startovan na ws://10.0.5.14:8765")
+    async with websockets.serve(handle_client, "10.0.5.14", 8765):
         await asyncio.Future()
 
 asyncio.run(main())
