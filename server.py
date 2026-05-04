@@ -99,9 +99,8 @@ def get_local_ip():
         s.close()
 
 async def main():
-    local_ip = get_local_ip()
-    log(f"WebSocket server startovan na ws://{local_ip}:8765 (dostupno u lokalnoj mreži)")
-    async with websockets.serve(handle_client, "0.0.0.0", 8765):
+    log("WebSocket server startovan na ws://10.0.5.14:8765")
+    async with websockets.serve(handle_client, "10.0.5.14", 8765):
         await asyncio.Future()
 
 asyncio.run(main())
