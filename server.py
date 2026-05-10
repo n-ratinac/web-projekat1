@@ -9,9 +9,15 @@ import random
 WORLD = 4000
 FOOD_COUNT = 70
 FOOD_MASS = 1
+BOT_COUNT = 8
+BOT_SPEED = 0.3
+BOT_NAMES = ["Sava", "Sibin", "Djani", "Mili", "Dzoni", "Boris", "Vuk", "Lazar", "Pera", "Mika", "Zika", "Paprika", "JakaSpika"]
 
 # Svi konektovani igraci: { websocket: { id, ime, hue, alive, cells[], target_x, target_y } }
 connected_clients = {}
+
+# Botovi: { bot_id: { id, ime, hue, alive, cells[], target_x, target_y } }
+bots = {}
 
 # Lista hrane: [ {id, x, y, mass, hue} ]
 food_list = []
@@ -44,10 +50,33 @@ def spawn_food():
     }
 
 def init_food():
-    """Inicijalizuje 600 food pellet-a pri startu servera."""
     global food_list
     food_list = [spawn_food() for _ in range(FOOD_COUNT)]
     log(f"Inicijalizovano {FOOD_COUNT} food pellet-a.")
+
+def random_target():
+    return random.uniform(200, WORLD - 200), random.uniform(200, WORLD - 200)
+
+def init_bots():
+    used_names = []
+    for i in range(BOT_COUNT):
+        bot_id = f"bot_{i}"
+        available = [n for n in BOT_NAMES if n not in used_names]
+        name = random.choice(available if available else BOT_NAMES)
+        used_names.append(name)
+        x, y = random.uniform(100, WORLD - 100), random.uniform(100, WORLD - 100)
+        tx, ty = random_target()
+        mass = 50
+        bots[bot_id] = {
+            "id": bot_id,
+            "ime": name,
+            "hue": random.randint(0, 360),
+            "alive": True,
+            "cells": [{"x": x, "y": y, "mass": mass, "r": mass_to_r(mass)}],
+            "target_x": tx,
+            "target_y": ty
+        }
+    log(f"Inicijalizovano {BOT_COUNT} botova.")
 
 def check_food_collisions(player):
     """
@@ -69,27 +98,43 @@ def check_food_collisions(player):
         food_list.remove(pellet)
         food_list.append(spawn_food())
 
+def move_entity(entity, speed_mult=1.0):
+    for cell in entity["cells"]:
+        dx = entity["target_x"] - cell["x"]
+        dy = entity["target_y"] - cell["y"]
+        norm_x, norm_y = normalize_direction(dx, dy)
+        speed = (800 / math.sqrt(cell["mass"])) * speed_mult
+        cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
+        cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
+
 async def game_loop():
     while True:
-        for ws, player in list(connected_clients.items()):
+        # Pomeri igrače
+        for player in list(connected_clients.values()):
             if not player["alive"]:
                 continue
-
-            for cell in player["cells"]:
-                dx = player["target_x"] - cell["x"]
-                dy = player["target_y"] - cell["y"]
-                norm_x, norm_y = normalize_direction(dx, dy)
-
-                speed = 800 / math.sqrt(cell["mass"])
-                cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
-                cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
-
+            move_entity(player)
             check_food_collisions(player)
 
+        # Pomeri botove
+        for bot in bots.values():
+            cell = bot["cells"][0]
+            dx = bot["target_x"] - cell["x"]
+            dy = bot["target_y"] - cell["y"]
+            dist = math.sqrt(dx**2 + dy**2)
+
+            # Novi cilj kad stigne ili nasumično (2% šansa po tiku)
+            if dist < 60 or random.random() < 0.02:
+                bot["target_x"], bot["target_y"] = random_target()
+
+            move_entity(bot, BOT_SPEED)
+            check_food_collisions(bot)
+
         if connected_clients:
+            lista_igraca = list(connected_clients.values()) + list(bots.values())
             poruka = json.dumps({
                 "type": "game_state",
-                "igraci": list(connected_clients.values()),
+                "igraci": lista_igraca,
                 "hrana": food_list
             })
 
@@ -168,8 +213,9 @@ def get_local_ip():
 
 async def main():
     init_food()
+    init_bots()
     log("WebSocket server startovan na ws://0.0.0.0:8765")
-    async with websockets.serve(handle_client, "localhost", 8765):
+    async with websockets.serve(handle_client, "0.0.0.0", 8765):
         asyncio.create_task(game_loop())
         await asyncio.Future()
 
