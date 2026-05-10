@@ -12,6 +12,7 @@ FOOD_MASS = 1
 FOOD_RADIUS = 2.26  # mass_to_r(1)
 BOT_COUNT = 8
 BOT_SPEED = 0.3
+BOT_DETECTION_RADIUS = 600
 BOT_NAMES = ["Sava", "Sibin", "Djani", "Mili", "Dzoni", "Boris", "Vuk", "Lazar", "Pera", "Mika", "Zika", "Paprika", "JakaSpika"]
 
 # Svi konektovani igraci: { websocket: { id, ime, hue, alive, cells[], target_x, target_y } }
@@ -144,6 +145,24 @@ def check_entity_collisions(entities):
                 prey["alive"] = False
                 log(f"{prey['ime']} je mrtav (pojeo: {predator['ime']})")
 
+def find_chase_target(bot):
+    """Vraća (x, y) najbliže ćelije igrača koju bot može pojesti, ili None."""
+    best_dist = BOT_DETECTION_RADIUS
+    target = None
+    for player in connected_clients.values():
+        if not player["alive"]:
+            continue
+        for bot_cell in bot["cells"]:
+            for player_cell in player["cells"]:
+                if bot_cell["mass"] > player_cell["mass"] * 1.15:
+                    dx = bot_cell["x"] - player_cell["x"]
+                    dy = bot_cell["y"] - player_cell["y"]
+                    dist = math.sqrt(dx**2 + dy**2)
+                    if dist < best_dist:
+                        best_dist = dist
+                        target = (player_cell["x"], player_cell["y"])
+    return target
+
 async def game_loop():
     while True:
         # Pomeri igrače
@@ -155,14 +174,19 @@ async def game_loop():
 
         # Pomeri botove
         for bot in bots.values():
-            cell = bot["cells"][0]
-            dx = bot["target_x"] - cell["x"]
-            dy = bot["target_y"] - cell["y"]
-            dist = math.sqrt(dx**2 + dy**2)
+            if not bot["alive"]:
+                continue
 
-            # Novi cilj kad stigne ili nasumično (2% šansa po tiku)
-            if dist < 60 or random.random() < 0.02:
-                bot["target_x"], bot["target_y"] = random_target()
+            chase = find_chase_target(bot)
+            if chase:
+                bot["target_x"], bot["target_y"] = chase
+            else:
+                cell = bot["cells"][0]
+                dx = bot["target_x"] - cell["x"]
+                dy = bot["target_y"] - cell["y"]
+                dist = math.sqrt(dx**2 + dy**2)
+                if dist < 60 or random.random() < 0.02:
+                    bot["target_x"], bot["target_y"] = random_target()
 
             move_entity(bot, BOT_SPEED)
             check_food_collisions(bot)
