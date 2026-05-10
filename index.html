@@ -305,6 +305,43 @@
       ctx.textAlign = 'right';
       ctx.fillText(`Igraca: ${igraci.length}`, canvas.width - 12, 20);
 
+      // Leaderboard (top 8, sortirano po masi)
+      const ranked = igraci
+        .map(ig => ({
+          ime: ig.ime,
+          id:  ig.id,
+          masa: ig.cells.reduce((s, c) => s + c.mass, 0)
+        }))
+        .filter(ig => ig.masa > 0)
+        .sort((a, b) => b.masa - a.masa)
+        .slice(0, 8);
+
+      const lbX = canvas.width - 160;
+      const lbY = 40;
+      const rowH = 18;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.roundRect(lbX - 8, lbY - 16, 160, 16 + ranked.length * rowH + 8, 6);
+      ctx.fill();
+
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillStyle = '#7ef7a0';
+      ctx.fillText('Leaderboard', lbX, lbY);
+
+      ctx.font = '11px Courier New';
+      ranked.forEach((ig, i) => {
+        const isMine = ig.id === myId;
+        ctx.fillStyle = isMine ? '#7ef7a0' : '#aaa';
+        const label = `${i + 1}. ${ig.ime}`;
+        ctx.fillText(label, lbX, lbY + (i + 1) * rowH);
+        ctx.fillStyle = isMine ? '#4ab870' : '#555';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(ig.masa), lbX + 148, lbY + (i + 1) * rowH);
+        ctx.textAlign = 'left';
+      });
+
       requestAnimationFrame(draw);
     }
 
