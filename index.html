@@ -137,6 +137,7 @@
 
     let myId      = null;
     let igraci    = [];
+    let hrana     = [];
     let playerName = '';
     let ws        = null;
 
@@ -175,6 +176,7 @@
 
       if (data.type === 'game_state') {
         igraci = data.igraci;
+        hrana  = data.hrana;
       }
     };
 
@@ -220,6 +222,16 @@
       // Skaliranje world → canvas
       const scaleX = canvas.width / WORLD;
       const scaleY = canvas.height / WORLD;
+
+      // Crtaj hranu
+      for (const pellet of hrana) {
+        const px = pellet.x * scaleX;
+        const py = pellet.y * scaleY;
+        ctx.beginPath();
+        ctx.arc(px, py, 3, 0, Math.PI * 2);
+        ctx.fillStyle = `hsl(${pellet.hue}, 80%, 60%)`;
+        ctx.fill();
+      }
 
       // Crtaj svakog igraca
       for (const igrac of igraci) {
