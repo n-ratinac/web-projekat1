@@ -8,7 +8,7 @@ import random
 
 WORLD = 4000
 FOOD_COUNT = 600
-FOOD_MASS = 1
+FOOD_MASS = 20
 FOOD_RADIUS = 2.26  # mass_to_r(1)
 BOT_COUNT = 8
 BOT_SPEED = 0.3
@@ -68,7 +68,7 @@ def init_bots():
         used_names.append(name)
         x, y = random.uniform(100, WORLD - 100), random.uniform(100, WORLD - 100)
         tx, ty = random_target()
-        mass = 50
+        mass = 2000
         bots[bot_id] = {
             "id": bot_id,
             "ime": name,
@@ -245,7 +245,7 @@ async def handle_client(websocket):
 
     start_x = random.uniform(100, WORLD - 100)
     start_y = random.uniform(100, WORLD - 100)
-    start_mass = 50
+    start_mass = 2000
 
     connected_clients[websocket] = {
         "id": player_id,
