@@ -196,10 +196,9 @@
     // ── Slanje pozicije miša serveru (world koordinate) ───────
     canvas.addEventListener('mousemove', (e) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const zoom = canvas.width / VIEWPORT_W;
       const rect = canvas.getBoundingClientRect();
-      const x = Math.round((e.clientX - rect.left - canvas.width  / 2) / zoom + cameraX);
-      const y = Math.round((e.clientY - rect.top  - canvas.height / 2) / zoom + cameraY);
+      const x = Math.round((e.clientX - rect.left) / canvas.width  * WORLD);
+      const y = Math.round((e.clientY - rect.top)  / canvas.height * WORLD);
       ws.send(JSON.stringify({ type: 'move', x, y }));
     });
 
@@ -209,73 +208,59 @@
       ctx.fillStyle = '#111318';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Kamera prati mog igrača
-      const myPlayer = igraci.find(ig => ig.id === myId);
-      if (myPlayer && myPlayer.cells.length > 0) {
-        cameraX = myPlayer.cells[0].x;
-        cameraY = myPlayer.cells[0].y;
-      }
+      const scaleX = canvas.width  / WORLD;
+      const scaleY = canvas.height / WORLD;
 
-      const zoom = canvas.width / VIEWPORT_W;
-
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.scale(zoom, zoom);
-      ctx.translate(-cameraX, -cameraY);
-
-      // Grid u world koordinatama
-      const gridStep = 200;
+      // Grid
       ctx.strokeStyle = '#1a1d24';
-      ctx.lineWidth = 1 / zoom;
-      for (let gx = 0; gx <= WORLD; gx += gridStep) {
-        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, WORLD); ctx.stroke();
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
       }
-      for (let gy = 0; gy <= WORLD; gy += gridStep) {
-        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(WORLD, gy); ctx.stroke();
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
-
-      // Granica mape
-      ctx.strokeStyle = '#2a2d35';
-      ctx.lineWidth = 6 / zoom;
-      ctx.strokeRect(0, 0, WORLD, WORLD);
 
       // Hrana
       for (const pellet of hrana) {
         ctx.beginPath();
-        ctx.arc(pellet.x, pellet.y, 6 / zoom, 0, Math.PI * 2);
+        ctx.arc(pellet.x * scaleX, pellet.y * scaleY, 3, 0, Math.PI * 2);
         ctx.fillStyle = `hsl(${pellet.hue}, 80%, 60%)`;
         ctx.fill();
       }
 
       // Igrači i botovi
+      let myMass = 0;
       for (const igrac of igraci) {
         const jesMoj = igrac.id === myId;
         for (const cell of igrac.cells) {
+          const sx = cell.x * scaleX;
+          const sy = cell.y * scaleY;
+          const sr = Math.max(cell.r * scaleX, 3);
+
+          if (jesMoj) myMass += cell.mass;
+
           ctx.beginPath();
-          ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
           ctx.fillStyle = jesMoj ? '#7ef7a0' : `hsl(${igrac.hue ?? 210}, 70%, 60%)`;
           ctx.fill();
           ctx.strokeStyle = jesMoj ? '#4ab870' : `hsl(${igrac.hue ?? 210}, 70%, 40%)`;
-          ctx.lineWidth = 2 / zoom;
+          ctx.lineWidth = 2;
           ctx.stroke();
 
-          // Ime u centru ako je dovoljno velika na ekranu
-          const screenR = cell.r * zoom;
-          if (screenR > 12) {
-            const fontSize = screenR * 0.5;
-            ctx.font = `bold ${fontSize / zoom}px Courier New`;
+          if (sr > 10) {
+            const fontSize = Math.max(9, Math.min(sr * 0.45, 18));
+            ctx.font = `bold ${fontSize}px Courier New`;
             ctx.fillStyle = 'rgba(255,255,255,0.9)';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(igrac.ime, cell.x, cell.y);
+            ctx.fillText(igrac.ime, sx, sy);
             ctx.textBaseline = 'alphabetic';
           }
         }
       }
 
-      ctx.restore();
-
-      // UI — screen space
+      // UI
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#7ef7a0';
@@ -283,6 +268,12 @@
       ctx.fillText('● Ti', 12, 20);
       ctx.fillStyle = '#5ba3f5';
       ctx.fillText('● Ostali', 12, 36);
+
+      if (myMass > 0) {
+        ctx.fillStyle = '#aaa';
+        ctx.fillText(`Masa: ${Math.round(myMass)}`, 12, 56);
+      }
+
       ctx.fillStyle = '#444';
       ctx.textAlign = 'right';
       ctx.fillText(`Igraca: ${igraci.length}`, canvas.width - 12, 20);
