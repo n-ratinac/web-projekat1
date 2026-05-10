@@ -68,7 +68,7 @@ def init_bots():
         used_names.append(name)
         x, y = random.uniform(100, WORLD - 100), random.uniform(100, WORLD - 100)
         tx, ty = random_target()
-        mass = 2000
+        mass = 1000
         bots[bot_id] = {
             "id": bot_id,
             "ime": name,
@@ -108,7 +108,7 @@ def move_entity(entity, speed_mult=1.0):
         if dist < 1:
             continue
         norm_x, norm_y = dx / dist, dy / dist
-        speed = min((200 / math.sqrt(cell["mass"])) * speed_mult, dist)
+        speed = min((1100 / math.sqrt(cell["mass"])) * speed_mult, dist)
         cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
         cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
 
@@ -245,7 +245,7 @@ async def handle_client(websocket):
 
     start_x = random.uniform(100, WORLD - 100)
     start_y = random.uniform(100, WORLD - 100)
-    start_mass = 2000
+    start_mass = 1000
 
     connected_clients[websocket] = {
         "id": player_id,
