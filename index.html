@@ -217,59 +217,77 @@
       ctx.fillStyle = '#111318';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      const scaleX = canvas.width  / WORLD;
-      const scaleY = canvas.height / WORLD;
+      // Ažuriraj kameru prema poziciji i masi igrača
+      let myMass = 0;
+      const myPlayer = igraci.find(i => i.id === myId);
+      if (myPlayer && myPlayer.cells.length > 0) {
+        const avgX = myPlayer.cells.reduce((s, c) => s + c.x, 0) / myPlayer.cells.length;
+        const avgY = myPlayer.cells.reduce((s, c) => s + c.y, 0) / myPlayer.cells.length;
+        myMass = myPlayer.cells.reduce((s, c) => s + c.mass, 0);
 
-      // Grid
-      ctx.strokeStyle = '#1a1d24';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < canvas.width; x += 40) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        camX += (avgX - camX) * CAM_LERP;
+        camY += (avgY - camY) * CAM_LERP;
+
+        const zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, ZOOM_BASE / Math.sqrt(myMass)));
+        zoom += (zoomTarget - zoom) * ZOOM_LERP;
       }
-      for (let y = 0; y < canvas.height; y += 40) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+
+      // Primeni kameru — sve world renderovanje ide između save/restore
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-camX, -camY);
+
+      // Grid (u world koordinatama)
+      const gridSize = 100;
+      const x0 = Math.floor((camX - canvas.width  / 2 / zoom) / gridSize) * gridSize;
+      const x1 = Math.ceil ((camX + canvas.width  / 2 / zoom) / gridSize) * gridSize;
+      const y0 = Math.floor((camY - canvas.height / 2 / zoom) / gridSize) * gridSize;
+      const y1 = Math.ceil ((camY + canvas.height / 2 / zoom) / gridSize) * gridSize;
+      ctx.strokeStyle = '#1a1d24';
+      ctx.lineWidth = 1 / zoom;
+      for (let x = x0; x <= x1; x += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+      }
+      for (let y = y0; y <= y1; y += gridSize) {
+        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
       }
 
       // Hrana
       for (const pellet of hrana) {
         ctx.beginPath();
-        ctx.arc(pellet.x * scaleX, pellet.y * scaleY, 3, 0, Math.PI * 2);
+        ctx.arc(pellet.x, pellet.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = `hsl(${pellet.hue}, 80%, 60%)`;
         ctx.fill();
       }
 
       // Igrači i botovi
-      let myMass = 0;
       for (const igrac of igraci) {
         const jesMoj = igrac.id === myId;
         for (const cell of igrac.cells) {
-          const sx = cell.x * scaleX;
-          const sy = cell.y * scaleY;
-          const sr = Math.max(cell.r * scaleX, 3);
-
-          if (jesMoj) myMass += cell.mass;
-
           ctx.beginPath();
-          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
           ctx.fillStyle = jesMoj ? '#7ef7a0' : `hsl(${igrac.hue ?? 210}, 70%, 60%)`;
           ctx.fill();
           ctx.strokeStyle = jesMoj ? '#4ab870' : `hsl(${igrac.hue ?? 210}, 70%, 40%)`;
-          ctx.lineWidth = 2;
+          ctx.lineWidth = 2 / zoom;
           ctx.stroke();
 
-          if (sr > 10) {
-            const fontSize = Math.max(9, Math.min(sr * 0.45, 18));
+          if (cell.r * zoom > 10) {
+            const fontSize = Math.max(9 / zoom, Math.min(cell.r * 0.45, 18 / zoom));
             ctx.font = `bold ${fontSize}px Courier New`;
             ctx.fillStyle = 'rgba(255,255,255,0.9)';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(igrac.ime, sx, sy);
+            ctx.fillText(igrac.ime, cell.x, cell.y);
             ctx.textBaseline = 'alphabetic';
           }
         }
       }
 
-      // UI
+      ctx.restore();
+
+      // UI (screen koordinate)
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = '#7ef7a0';
