@@ -104,8 +104,11 @@ def move_entity(entity, speed_mult=1.0):
     for cell in entity["cells"]:
         dx = entity["target_x"] - cell["x"]
         dy = entity["target_y"] - cell["y"]
-        norm_x, norm_y = normalize_direction(dx, dy)
-        speed = (800 / math.sqrt(cell["mass"])) * speed_mult
+        dist = math.sqrt(dx**2 + dy**2)
+        if dist < 1:
+            continue
+        norm_x, norm_y = dx / dist, dy / dist
+        speed = min((200 / math.sqrt(cell["mass"])) * speed_mult, dist)
         cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
         cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
 
