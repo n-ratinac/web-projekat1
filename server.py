@@ -7,7 +7,7 @@ import math
 import random
 
 WORLD = 4000
-FOOD_COUNT = 600
+FOOD_COUNT = 70
 FOOD_MASS = 1
 
 # Svi konektovani igraci: { websocket: { id, ime, hue, alive, cells[], target_x, target_y } }
@@ -69,10 +69,42 @@ def check_food_collisions(player):
         food_list.remove(pellet)
         food_list.append(spawn_food())
 
+async def game_loop():
+    while True:
+        for ws, player in list(connected_clients.items()):
+            if not player["alive"]:
+                continue
+
+            for cell in player["cells"]:
+                dx = player["target_x"] - cell["x"]
+                dy = player["target_y"] - cell["y"]
+                norm_x, norm_y = normalize_direction(dx, dy)
+
+                speed = 800 / math.sqrt(cell["mass"])
+                cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
+                cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
+
+            check_food_collisions(player)
+
+        if connected_clients:
+            poruka = json.dumps({
+                "type": "game_state",
+                "igraci": list(connected_clients.values()),
+                "hrana": food_list
+            })
+
+            for ws in list(connected_clients.keys()):
+                try:
+                    await ws.send(poruka)
+                except websockets.exceptions.ConnectionClosed:
+                    pass
+
+        await asyncio.sleep(1 / 20)
+
+
 async def handle_client(websocket):
     client_ip = websocket.remote_address[0]
     player_id = str(id(websocket))
-    connect_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     log(f"Nova konekcija od: {client_ip} (id: {player_id})")
 
@@ -97,16 +129,14 @@ async def handle_client(websocket):
         "target_y": start_y
     }
 
-    async def primaj():
-        try:
-            async for message in websocket:
+    try:
+        async for message in websocket:
+            try:
                 data = json.loads(message)
 
                 if data["type"] == "join":
                     connected_clients[websocket]["ime"] = data.get("ime", "Igrac")
                     log(f"Igrac se pridružio: {connected_clients[websocket]['ime']}")
-
-                    # #1 — welcome poruka sa dodeljivanjem ID-a
                     await websocket.send(json.dumps({
                         "type": "welcome",
                         "id": player_id
@@ -116,53 +146,13 @@ async def handle_client(websocket):
                     connected_clients[websocket]["target_x"] = data["x"]
                     connected_clients[websocket]["target_y"] = data["y"]
 
-        except websockets.exceptions.ConnectionClosed:
-            log(f"[{client_ip}] Klijent se diskonektovao")
-        except json.JSONDecodeError:
-            log(f"Nevalidan JSON od {client_ip}")
+            except json.JSONDecodeError:
+                log(f"Nevalidan JSON od {client_ip}")
 
-    async def salji_periodicno():
-        try:
-            while True:
-                player = connected_clients[websocket]
-
-                # Pomeri svaku ćeliju prema target poziciji
-                for cell in player["cells"]:
-                    dx = player["target_x"] - cell["x"]
-                    dy = player["target_y"] - cell["y"]
-                    norm_x, norm_y = normalize_direction(dx, dy)
-
-                    # Brzina zavisi od mase (kao u singleplayer)
-                    speed = 800 / math.sqrt(cell["mass"])
-                    cell["x"] += norm_x * speed
-                    cell["y"] += norm_y * speed
-
-                    # Zadrži unutar mape
-                    cell["x"] = max(0, min(WORLD, cell["x"]))
-                    cell["y"] = max(0, min(WORLD, cell["y"]))
-
-                # #4 — kolizija sa hranom
-                check_food_collisions(player)
-
-                # Pripremi listu igrača za slanje (bez websocket ključa)
-                lista_igraca = list(connected_clients.values())
-
-                poruka = json.dumps({
-                    "type": "game_state",
-                    "igraci": lista_igraca,
-                    "hrana": food_list
-                })
-
-                await websocket.send(poruka)
-                await asyncio.sleep(1 / 20)  # 20 FPS
-
-        except websockets.exceptions.ConnectionClosed:
-            pass
-
-    try:
-        await asyncio.gather(primaj(), salji_periodicno())
+    except websockets.exceptions.ConnectionClosed:
+        log(f"[{client_ip}] Klijent se diskonektovao")
     finally:
-        del connected_clients[websocket]
+        connected_clients.pop(websocket, None)
         log(f"Igrac {player_id} uklonjen. Online: {len(connected_clients)}")
 
 
@@ -178,8 +168,9 @@ def get_local_ip():
 
 async def main():
     init_food()
-    log("WebSocket server startovan na ws://10.0.5.14:8765")
-    async with websockets.serve(handle_client, "0.0.0.0", 8765):
+    log("WebSocket server startovan na ws://0.0.0.0:8765")
+    async with websockets.serve(handle_client, "localhost", 8765):
+        asyncio.create_task(game_loop())
         await asyncio.Future()
 
 asyncio.run(main())
