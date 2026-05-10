@@ -116,7 +116,9 @@ def check_entity_collisions(entities):
     """
     Predator može pojesti prey ćeliju ako:
       mass_pred > mass_prey * 1.15  i  dist < r_pred - r_prey * 0.3
+    Vraća listu (prey, killer_name) za entitete koji su upravo umrli.
     """
+    killed = []
     for i in range(len(entities)):
         for j in range(len(entities)):
             if i == j:
@@ -147,6 +149,9 @@ def check_entity_collisions(entities):
             if not prey["cells"]:
                 prey["alive"] = False
                 log(f"{prey['ime']} je mrtav (pojeo: {predator['ime']})")
+                killed.append((prey, predator["ime"]))
+
+    return killed
 
 def find_chase_target(bot):
     """Vraća (x, y) najbliže ćelije igrača koju bot može pojesti, ili None."""
@@ -199,10 +204,24 @@ async def game_loop():
             [p for p in connected_clients.values()] +
             [b for b in bots.values()]
         )
-        check_entity_collisions(all_entities)
+        killed = check_entity_collisions(all_entities)
+
+        # Pošalji dead poruku igračima koji su upravo umrli
+        if killed:
+            ws_by_id = {v["id"]: ws for ws, v in connected_clients.items()}
+            for prey, killer_name in killed:
+                ws = ws_by_id.get(prey["id"])
+                if ws:
+                    try:
+                        await ws.send(json.dumps({"type": "dead", "killer_name": killer_name}))
+                    except websockets.exceptions.ConnectionClosed:
+                        pass
 
         if connected_clients:
-            lista_igraca = list(connected_clients.values()) + list(bots.values())
+            lista_igraca = (
+                [p for p in connected_clients.values() if p["alive"]] +
+                [b for b in bots.values() if b["alive"]]
+            )
             poruka = json.dumps({
                 "type": "game_state",
                 "igraci": lista_igraca,
@@ -261,6 +280,17 @@ async def handle_client(websocket):
                 elif data["type"] == "move":
                     connected_clients[websocket]["target_x"] = data["x"]
                     connected_clients[websocket]["target_y"] = data["y"]
+
+                elif data["type"] == "respawn":
+                    player = connected_clients[websocket]
+                    x = random.uniform(100, WORLD - 100)
+                    y = random.uniform(100, WORLD - 100)
+                    mass = 50
+                    player["alive"] = True
+                    player["cells"] = [{"x": x, "y": y, "mass": mass, "r": mass_to_r(mass)}]
+                    player["target_x"] = x
+                    player["target_y"] = y
+                    log(f"Igrac {player['ime']} se respawnuo")
 
             except json.JSONDecodeError:
                 log(f"Nevalidan JSON od {client_ip}")
