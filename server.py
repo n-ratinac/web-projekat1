@@ -107,6 +107,42 @@ def move_entity(entity, speed_mult=1.0):
         cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
         cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
 
+def check_entity_collisions(entities):
+    """
+    Predator može pojesti prey ćeliju ako:
+      mass_pred > mass_prey * 1.15  i  dist < r_pred - r_prey * 0.3
+    """
+    for i in range(len(entities)):
+        for j in range(len(entities)):
+            if i == j:
+                continue
+            predator = entities[i]
+            prey = entities[j]
+            if not predator["alive"] or not prey["alive"]:
+                continue
+
+            eaten = []
+            for pred_cell in predator["cells"]:
+                for prey_cell in prey["cells"]:
+                    if prey_cell in eaten:
+                        continue
+                    dx = pred_cell["x"] - prey_cell["x"]
+                    dy = pred_cell["y"] - prey_cell["y"]
+                    dist = math.sqrt(dx**2 + dy**2)
+                    if (pred_cell["mass"] > prey_cell["mass"] * 1.15
+                            and dist < pred_cell["r"] - prey_cell["r"] * 0.3):
+                        eaten.append(prey_cell)
+                        pred_cell["mass"] += prey_cell["mass"]
+                        pred_cell["r"] = mass_to_r(pred_cell["mass"])
+
+            for cell in eaten:
+                prey["cells"].remove(cell)
+                log(f"{predator['ime']} pojeo ćeliju od {prey['ime']}")
+
+            if not prey["cells"]:
+                prey["alive"] = False
+                log(f"{prey['ime']} je mrtav (pojeo: {predator['ime']})")
+
 async def game_loop():
     while True:
         # Pomeri igrače
@@ -129,6 +165,13 @@ async def game_loop():
 
             move_entity(bot, BOT_SPEED)
             check_food_collisions(bot)
+
+        # Proveri jedenje između svih entiteta
+        all_entities = (
+            [p for p in connected_clients.values()] +
+            [b for b in bots.values()]
+        )
+        check_entity_collisions(all_entities)
 
         if connected_clients:
             lista_igraca = list(connected_clients.values()) + list(bots.values())
