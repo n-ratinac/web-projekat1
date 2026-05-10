@@ -140,9 +140,16 @@
     let hrana      = [];
     let playerName = '';
     let ws         = null;
-    let cameraX    = WORLD / 2;
-    let cameraY    = WORLD / 2;
-    const VIEWPORT_W = 800; // world units vidljivo horizontalno
+
+    // Kamera
+    let camX = WORLD / 2;
+    let camY = WORLD / 2;
+    let zoom = 1.0;
+    const ZOOM_BASE = 10;
+    const ZOOM_MIN  = 0.2;
+    const ZOOM_MAX  = 2.0;
+    const CAM_LERP  = 0.1;
+    const ZOOM_LERP = 0.05;
 
     // ── Name overlay ──────────────────────────────────────────
     const overlay   = document.getElementById('name-overlay');
@@ -197,8 +204,10 @@
     canvas.addEventListener('mousemove', (e) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const rect = canvas.getBoundingClientRect();
-      const x = Math.round((e.clientX - rect.left) / canvas.width  * WORLD);
-      const y = Math.round((e.clientY - rect.top)  / canvas.height * WORLD);
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const x = Math.round((sx - canvas.width  / 2) / zoom + camX);
+      const y = Math.round((sy - canvas.height / 2) / zoom + camY);
       ws.send(JSON.stringify({ type: 'move', x, y }));
     });
 
