@@ -46,9 +46,80 @@
       font-size: 11px;
       color: #444;
     }
+
+    #name-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    #name-box {
+      background: #1a1d24;
+      border: 1px solid #2a2d35;
+      border-radius: 12px;
+      padding: 40px 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      min-width: 300px;
+    }
+
+    #name-box h2 {
+      font-size: 20px;
+      color: #7ef7a0;
+      letter-spacing: 2px;
+    }
+
+    #name-input {
+      background: #111318;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-family: 'Courier New', monospace;
+      font-size: 15px;
+      padding: 10px 16px;
+      width: 100%;
+      outline: none;
+      text-align: center;
+    }
+
+    #name-input:focus {
+      border-color: #7ef7a0;
+    }
+
+    #play-btn {
+      background: #7ef7a0;
+      color: #111318;
+      border: none;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 10px 32px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      width: 100%;
+    }
+
+    #play-btn:hover {
+      background: #5bd680;
+    }
   </style>
 </head>
 <body>
+
+  <div id="name-overlay">
+    <div id="name-box">
+      <h2>AGAR.IO</h2>
+      <input type="text" id="name-input" placeholder="Unesite vaše ime..." maxlength="20" />
+      <button id="play-btn">IGRAJ</button>
+    </div>
+  </div>
 
   <div id="status-bar">
     <div class="dot" id="dot"></div>
@@ -64,15 +135,35 @@
     const ctx    = canvas.getContext('2d');
     const WORLD  = 4000;
 
-    let myId   = null;
-    let igraci = [];
+    let myId      = null;
+    let igraci    = [];
+    let playerName = '';
+    let ws        = null;
+
+    // ── Name overlay ──────────────────────────────────────────
+    const overlay   = document.getElementById('name-overlay');
+    const nameInput = document.getElementById('name-input');
+    const playBtn   = document.getElementById('play-btn');
+
+    function startGame() {
+      const raw = nameInput.value.trim();
+      playerName = raw.length > 0 ? raw : 'Igrac';
+      overlay.style.display = 'none';
+      connectWS();
+    }
+
+    playBtn.addEventListener('click', startGame);
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startGame();
+    });
 
     // ── WebSocket ─────────────────────────────────────────────
-    const ws = new WebSocket('ws://10.0.5.14:8765');
+    function connectWS() {
+      ws = new WebSocket('ws://127.0.0.1:8765');
 
     ws.onopen = () => {
       setStatus('connected', 'Konektovan');
-      ws.send(JSON.stringify({ type: 'join', ime: 'TestIgrac' }));
+      ws.send(JSON.stringify({ type: 'join', ime: playerName }));
     };
 
     ws.onmessage = (event) => {
@@ -89,6 +180,7 @@
 
     ws.onerror = () => setStatus('error', 'Greška pri konekciji');
     ws.onclose = () => setStatus('', 'Diskonektovan');
+    } // connectWS
 
     function setStatus(state, text) {
       const dot = document.getElementById('dot');
@@ -98,7 +190,7 @@
 
     // ── Slanje pozicije miša serveru (world koordinate) ───────
     canvas.addEventListener('mousemove', (e) => {
-      if (ws.readyState !== WebSocket.OPEN) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
       const rect = canvas.getBoundingClientRect();
       const x = Math.round((e.clientX - rect.left) / canvas.width * WORLD);
@@ -149,11 +241,16 @@
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          // Ime iznad
-          ctx.fillStyle = '#fff';
-          ctx.font = '12px Courier New';
-          ctx.textAlign = 'center';
-          ctx.fillText(igrac.ime, sx, sy - sr - 6);
+          // Ime u centru ćelije (samo ako je dovoljno velika)
+          if (sr > 10) {
+            const fontSize = Math.max(9, Math.min(sr * 0.45, 18));
+            ctx.font = `bold ${fontSize}px Courier New`;
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(igrac.ime, sx, sy);
+            ctx.textBaseline = 'alphabetic';
+          }
 
           // Koordinate ispod
           ctx.fillStyle = '#555';
