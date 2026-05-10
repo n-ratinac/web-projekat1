@@ -7,8 +7,9 @@ import math
 import random
 
 WORLD = 4000
-FOOD_COUNT = 70
+FOOD_COUNT = 600
 FOOD_MASS = 1
+FOOD_RADIUS = 2.26  # mass_to_r(1)
 BOT_COUNT = 8
 BOT_SPEED = 0.3
 BOT_NAMES = ["Sava", "Sibin", "Djani", "Mili", "Dzoni", "Boris", "Vuk", "Lazar", "Pera", "Mika", "Zika", "Paprika", "JakaSpika"]
@@ -89,7 +90,7 @@ def check_food_collisions(player):
             dx = cell["x"] - pellet["x"]
             dy = cell["y"] - pellet["y"]
             dist = math.sqrt(dx**2 + dy**2)
-            if dist < cell["r"]:
+            if dist < cell["r"] + FOOD_RADIUS:
                 eaten.append(pellet)
                 cell["mass"] += pellet["mass"]
                 cell["r"] = mass_to_r(cell["mass"])
