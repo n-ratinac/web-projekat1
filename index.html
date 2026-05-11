@@ -1,351 +1,378 @@
 <!DOCTYPE html>
 <html lang="sr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pozicija Test</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: #111318;
-      color: #e0e0e0;
-      font-family: 'Courier New', monospace;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      gap: 12px;
-    }
-
-    #status-bar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: #555;
-    }
-
-    .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #555;
-    }
-    .dot.connected { background: #7ef7a0; }
-    .dot.error     { background: #f97; }
-
-    #canvas {
-      border: 1px solid #2a2d35;
-      border-radius: 8px;
-      display: block;
-    }
-
-    #info {
-      font-size: 11px;
-      color: #444;
-    }
-
-    #name-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.85);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 100;
-    }
-
-    #name-box {
-      background: #1a1d24;
-      border: 1px solid #2a2d35;
-      border-radius: 12px;
-      padding: 40px 48px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 20px;
-      min-width: 300px;
-    }
-
-    #name-box h2 {
-      font-size: 20px;
-      color: #7ef7a0;
-      letter-spacing: 2px;
-    }
-
-    #name-input {
-      background: #111318;
-      border: 1px solid #333;
-      border-radius: 6px;
-      color: #e0e0e0;
-      font-family: 'Courier New', monospace;
-      font-size: 15px;
-      padding: 10px 16px;
-      width: 100%;
-      outline: none;
-      text-align: center;
-    }
-
-    #name-input:focus {
-      border-color: #7ef7a0;
-    }
-
-    #play-btn {
-      background: #7ef7a0;
-      color: #111318;
-      border: none;
-      border-radius: 6px;
-      font-family: 'Courier New', monospace;
-      font-size: 14px;
-      font-weight: bold;
-      padding: 10px 32px;
-      cursor: pointer;
-      letter-spacing: 1px;
-      width: 100%;
-    }
-
-    #play-btn:hover {
-      background: #5bd680;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Agar.io - Lokalni Test</title>
+    <style>
+        body { margin: 0; padding: 0; background: #111318; color: #e0e0e0; font-family: 'Courier New', monospace; overflow: hidden; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #status-bar { position: absolute; top: 10px; left: 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+        .dot.connected { background: #7ef7a0; }
+        .dot.error { background: #f97; }
+        #leaderboard { position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px; min-width: 150px; }
+        #death-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0, 0, 0, 0.8); display: none; flex-direction: column; 
+            align-items: center; justify-content: center; pointer-events: all; 
+        }
+        canvas { display: block; }
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        #start-overlay input {
+            padding: 12px; font-size: 20px; margin-bottom: 15px; text-align: center;
+            border-radius: 8px; border: none; outline: none; font-weight: bold;
+        }
+        #start-overlay button {
+            padding: 12px 30px; font-size: 20px; cursor: pointer; border-radius: 8px;
+            border: none; background: #7ef7a0; color: #111; font-weight: bold;
+            text-transform: uppercase; transition: transform 0.1s;
+        }
+        #start-overlay button:active { transform: scale(0.95); }
+    </style>
 </head>
 <body>
-
-  <div id="name-overlay">
-    <div id="name-box">
-      <h2>AGAR.IO</h2>
-      <input type="text" id="name-input" placeholder="Unesite vaše ime..." maxlength="20" />
-      <button id="play-btn">IGRAJ</button>
+    <div id="start-overlay">
+        <h1 style="color: #7ef7a0; font-size: 40px; margin-bottom: 30px;">Agar.io Klon</h1>
+        <input type="text" id="player-name" placeholder="Unesi ime..." maxlength="15" autocomplete="off" />
+        <button onclick="startGame()">Započni Igru</button>
     </div>
-  </div>
+    <div id="ui-layer">
+        <div id="status-bar">
+            <div class="dot" id="dot"></div>
+            <span id="status-text">Povezivanje...</span>
+        </div>
+        <div id="leaderboard">
+            <strong>Leaderboard</strong>
+            <div id="lb-list"></div>
+        </div>
+    </div>
 
-  <div id="status-bar">
-    <div class="dot" id="dot"></div>
-    <span id="status-text">Nije konektovan...</span>
-  </div>
+    <div id="death-overlay">
+        <h1>KRAJ IGRE</h1>
+        <p id="killer-info"></p>
+        <button onclick="respawn()">Igraj ponovo</button>
+    </div>
 
-  <canvas id="canvas" width="1200" height="750"></canvas>
+    <canvas id="gameCanvas"></canvas>
 
-  <div id="info">Pomeri miša po canvasu — pozicija se šalje serveru</div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const WORLD_SIZE = 4000;
 
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx    = canvas.getContext('2d');
-    const WORLD  = 4000;
-
-    let myId       = null;
-    let igraci     = [];
-    let hrana      = [];
-    let playerName = '';
-    let ws         = null;
-
-    // Kamera
-    let camX = WORLD / 2;
-    let camY = WORLD / 2;
-    let zoom = 1.0;
-    const ZOOM_BASE = 10;
-    const ZOOM_MIN  = 0.2;
-    const ZOOM_MAX  = 2.0;
-    const CAM_LERP  = 0.1;
-    const ZOOM_LERP = 0.05;
-
-    // ── Name overlay ──────────────────────────────────────────
-    const overlay   = document.getElementById('name-overlay');
-    const nameInput = document.getElementById('name-input');
-    const playBtn   = document.getElementById('play-btn');
-
-    function startGame() {
-      const raw = nameInput.value.trim();
-      playerName = raw.length > 0 ? raw : 'Igrac';
-      overlay.style.display = 'none';
-      connectWS();
+        // Globalne promenljive stanja - koristimo 'let' da izbegnemo greške pri dodeli 
+        let ws = null;
+        let myId = null;
+        let stateIgraci = [];
+        let stateFood = [];
+        let stateViruses = [];
+        
+        // Kamera [cite: 1602]
+        let camX = WORLD_SIZE / 2;
+        let camY = WORLD_SIZE / 2;
+        let lerpPositions = {};
+        // FPS kontrola za slanje 'move' poruka [cite: 1595]
+        // Pamćenje pozicije miša za glatko kretanje
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        function respawn() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        // Sakrij overlay
+        document.getElementById('death-overlay').style.display = 'none';
+        
+        // Pošalji serveru zahtev za respawn
+        ws.send(JSON.stringify({ type: 'respawn' }));
     }
+}
+        function updateLeaderboard(igraci) {
+        const lbList = document.getElementById('lb-list');
+    
+         // 1. Izračunaj ukupnu masu za svakog igrača i sortiraj ih
+        const sorted = igraci.map(igr => {
+            const totalMass = igr.cells.reduce((sum, c) => sum + c.mass, 0);
+            return { ime: igr.ime, mass: Math.round(totalMass), id: igr.id };
+        }).sort((a, b) => b.mass - a.mass).slice(0, 8); // Uzimamo top 8
 
-    playBtn.addEventListener('click', startGame);
-    nameInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') startGame();
-    });
-
-    // ── WebSocket ─────────────────────────────────────────────
-    function connectWS() {
-      ws = new WebSocket('ws://127.0.0.1:8765');
-
-    ws.onopen = () => {
-      setStatus('connected', 'Konektovan');
-      ws.send(JSON.stringify({ type: 'join', ime: playerName }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'welcome') {
-        myId = data.id;
-      }
-
-      if (data.type === 'game_state') {
-        igraci = data.igraci;
-        hrana  = data.hrana;
-      }
-    };
-
-    ws.onerror = () => setStatus('error', 'Greška pri konekciji');
-    ws.onclose = () => setStatus('', 'Diskonektovan');
-    } // connectWS
-
-    function setStatus(state, text) {
-      const dot = document.getElementById('dot');
-      dot.className = 'dot' + (state ? ' ' + state : '');
-      document.getElementById('status-text').textContent = text;
-    }
-
-    // ── Slanje pozicije miša serveru (world koordinate) ───────
-    canvas.addEventListener('mousemove', (e) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const rect = canvas.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      const x = Math.round((sx - canvas.width  / 2) / zoom + camX);
-      const y = Math.round((sy - canvas.height / 2) / zoom + camY);
-      ws.send(JSON.stringify({ type: 'move', x, y }));
-    });
-
-    // ── Crtanje ───────────────────────────────────────────────
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#111318';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Ažuriraj kameru prema poziciji i masi igrača
-      let myMass = 0;
-      const myPlayer = igraci.find(i => i.id === myId);
-      if (myPlayer && myPlayer.cells.length > 0) {
-        const avgX = myPlayer.cells.reduce((s, c) => s + c.x, 0) / myPlayer.cells.length;
-        const avgY = myPlayer.cells.reduce((s, c) => s + c.y, 0) / myPlayer.cells.length;
-        myMass = myPlayer.cells.reduce((s, c) => s + c.mass, 0);
-
-        camX += (avgX - camX) * CAM_LERP;
-        camY += (avgY - camY) * CAM_LERP;
-
-        const zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, ZOOM_BASE / Math.sqrt(myMass)));
-        zoom += (zoomTarget - zoom) * ZOOM_LERP;
-      }
-
-      // Primeni kameru — sve world renderovanje ide između save/restore
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.scale(zoom, zoom);
-      ctx.translate(-camX, -camY);
-
-      // Grid (u world koordinatama)
-      const gridSize = 100;
-      const x0 = Math.floor((camX - canvas.width  / 2 / zoom) / gridSize) * gridSize;
-      const x1 = Math.ceil ((camX + canvas.width  / 2 / zoom) / gridSize) * gridSize;
-      const y0 = Math.floor((camY - canvas.height / 2 / zoom) / gridSize) * gridSize;
-      const y1 = Math.ceil ((camY + canvas.height / 2 / zoom) / gridSize) * gridSize;
-      ctx.strokeStyle = '#1a1d24';
-      ctx.lineWidth = 1 / zoom;
-      for (let x = x0; x <= x1; x += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
-      }
-      for (let y = y0; y <= y1; y += gridSize) {
-        ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
-      }
-
-      // Hrana
-      for (const pellet of hrana) {
-        ctx.beginPath();
-        ctx.arc(pellet.x, pellet.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = `hsl(${pellet.hue}, 80%, 60%)`;
-        ctx.fill();
-      }
-
-      // Igrači i botovi
-      for (const igrac of igraci) {
-        const jesMoj = igrac.id === myId;
-        for (const cell of igrac.cells) {
-          ctx.beginPath();
-          ctx.arc(cell.x, cell.y, cell.r, 0, Math.PI * 2);
-          ctx.fillStyle = jesMoj ? '#7ef7a0' : `hsl(${igrac.hue ?? 210}, 70%, 60%)`;
-          ctx.fill();
-          ctx.strokeStyle = jesMoj ? '#4ab870' : `hsl(${igrac.hue ?? 210}, 70%, 40%)`;
-          ctx.lineWidth = 2 / zoom;
-          ctx.stroke();
-
-          if (cell.r * zoom > 10) {
-            const fontSize = Math.max(9 / zoom, Math.min(cell.r * 0.45, 18 / zoom));
-            ctx.font = `bold ${fontSize}px Courier New`;
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(igrac.ime, cell.x, cell.y);
-            ctx.textBaseline = 'alphabetic';
-          }
+        // 2. Generiši HTML (označi tvog igrača zelenom bojom)
+        lbList.innerHTML = sorted.map((igr, i) => 
+        `<div style="color: ${igr.id === myId ? '#7ef7a0' : '#fff'}">
+            ${i+1}. ${igr.ime}: ${igr.mass}
+         </div>`
+            ).join('');
         }
-      }
 
-      ctx.restore();
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.onresize = resize;
+        resize();
 
-      // UI (screen koordinate)
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillStyle = '#7ef7a0';
-      ctx.font = '11px Courier New';
-      ctx.fillText('● Ti', 12, 20);
-      ctx.fillStyle = '#5ba3f5';
-      ctx.fillText('● Ostali', 12, 36);
+        // Konekcija na server - koristimo 127.0.0.1 za lokalni rad [cite: 1056, 1057]
+        function connect() {
+            ws = new WebSocket('ws://127.0.0.1:8765');
 
-      if (myMass > 0) {
-        ctx.fillStyle = '#aaa';
-        ctx.fillText(`Masa: ${Math.round(myMass)}`, 12, 56);
-      }
+            ws.onopen = () => {
+                setStatus('connected', 'Konektovan');
+                
+                // Uzimamo ime iz input polja (ili stavljamo 'Gost' ako je prazno)
+                let unetoIme = document.getElementById('player-name').value.trim() || 'Gost';
+                ws.send(JSON.stringify({ type: 'join', ime: unetoIme }));
+            };
 
-      ctx.fillStyle = '#444';
-      ctx.textAlign = 'right';
-      ctx.fillText(`Igraca: ${igraci.length}`, canvas.width - 12, 20);
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
 
-      // Leaderboard (top 8, sortirano po masi)
-      const ranked = igraci
-        .map(ig => ({
-          ime: ig.ime,
-          id:  ig.id,
-          masa: ig.cells.reduce((s, c) => s + c.mass, 0)
-        }))
-        .filter(ig => ig.masa > 0)
-        .sort((a, b) => b.masa - a.masa)
-        .slice(0, 8);
+                // Faza 8: Dobijanje ID-a [cite: 1593]
+                if (data.type === 'welcome') {
+                    myId = data.id;
+                }
 
-      const lbX = canvas.width - 160;
-      const lbY = 40;
-      const rowH = 18;
+                // Faza 9 i 10: Ažuriranje stanja sveta [cite: 1600, 1617]
+                if (data.type === 'game_state') {
+                    stateIgraci = data.igraci;
+                    stateFood = data.hrana || [];
+                    stateViruses = data.virusi || [];
+                    updateLeaderboard(data.igraci);
+                }
 
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.beginPath();
-      ctx.roundRect(lbX - 8, lbY - 16, 160, 16 + ranked.length * rowH + 8, 6);
-      ctx.fill();
+                // Faza 12: Death poruka [cite: 1583]
+                if (data.type === 'dead') {
+                    document.getElementById('death-overlay').style.display = 'flex';
+                    document.getElementById('killer-info').textContent = `Pojeo te je: ${data.killer_name}`;
+                }
+            };
 
-      ctx.textAlign = 'left';
-      ctx.font = 'bold 11px Courier New';
-      ctx.fillStyle = '#7ef7a0';
-      ctx.fillText('Leaderboard', lbX, lbY);
+            ws.onerror = () => setStatus('error', 'Greška pri konekciji');
+            ws.onclose = () => setStatus('', 'Veza prekinuta');
+        }
 
-      ctx.font = '11px Courier New';
-      ranked.forEach((ig, i) => {
-        const isMine = ig.id === myId;
-        ctx.fillStyle = isMine ? '#7ef7a0' : '#aaa';
-        const label = `${i + 1}. ${ig.ime}`;
-        ctx.fillText(label, lbX, lbY + (i + 1) * rowH);
-        ctx.fillStyle = isMine ? '#4ab870' : '#555';
-        ctx.textAlign = 'right';
-        ctx.fillText(Math.round(ig.masa), lbX + 148, lbY + (i + 1) * rowH);
-        ctx.textAlign = 'left';
-      });
+        function setStatus(state, text) {
+            const dot = document.getElementById('dot');
+            dot.className = 'dot' + (state ? ' ' + state : '');
+            document.getElementById('status-text').textContent = text;
+        }
 
-      requestAnimationFrame(draw);
-    }
+        // Faza 11: Keyboard kontrole (Space i W) [cite: 1621, 1626]
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-    draw();
-  </script>
+            if (e.code === 'Space') {
+                ws.send(JSON.stringify({ type: 'split' }));
+            } else if (e.code === 'KeyW') {
+                ws.send(JSON.stringify({ type: 'eject' }));
+            }
+        });
+
+        // Anti-Cheat: Sprečavanje zumiranja pretraživača
+        window.addEventListener('wheel', function(e) {
+            if (e.ctrlKey) {
+                e.preventDefault(); // Blokira Ctrl + točkić miša
+            }
+        }, { passive: false });
+
+        window.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '_')) {
+                e.preventDefault(); // Blokira Ctrl + Plus / Minus na tastaturi
+            }
+        });
+
+        // Praćenje miša i slanje pozicije na 20 FPS [cite: 1595]
+        // Samo beležimo gde je miš trenutno na ekranu
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        // Kontinuirano slanje ciljne tačke serveru (20 puta u sekundi) čak i kad miš stoji
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN && myId) {
+                // Konverzija u svetske koordinate na osnovu kamere
+                const worldX = mouseX + camX - canvas.width / 2;
+                const worldY = mouseY + camY - canvas.height / 2;
+
+                ws.send(JSON.stringify({ type: 'move', x: worldX, y: worldY }));
+            }
+        }, 33);
+
+        function gameLoop() {
+            // 1. Čišćenje ekrana
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Pronalaženje tvog igrača za kameru (ISPRAVLJENO NA camX i camY)
+            // 2. Pronalaženje tvog igrača za kameru
+            const me = (stateIgraci || []).find(p => p.id === myId);
+            if (me && me.cells && me.cells.length > 0) {
+                // INTERPOLACIJA KAMERE: Kamera sada takođe "klizi" umesto da skače
+                camX += (me.cells[0].x - camX) * 0.15;
+                camY += (me.cells[0].y - camY) * 0.15;
+            }
+
+            // Sigurnosna provjera kamere
+            if (isNaN(camX) || isNaN(camY)) {
+                camX = 2000; 
+                camY = 2000;
+            }
+
+            ctx.save();
+            ctx.translate(canvas.width / 2 - camX, canvas.height / 2 - camY);
+
+            // 3. CRTANJE GRANICA MAPE I MREŽE
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 2;
+            for (let x = 0; x <= 4000; x += 100) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 4000); ctx.stroke();
+            }
+            for (let y = 0; y <= 4000; y += 100) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(4000, y); ctx.stroke();
+            }
+
+            // 4. CRTANJE HRANE I EJECTOVANE MASE
+    (stateFood || []).forEach(f => {
+        if (!f.is_ejected) {
+            // OBIČNA HRANA (Mali krug bez ivice)
+            ctx.fillStyle = `hsl(${f.hue}, 100%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(f.x, f.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+        } else {
+            // EJECTOVANA MASA (Specijalan izgled i animacija)
+            const fid = f.id;
+            
+            if (!lerpPositions[fid]) {
+                // Trik: Vizuelno kreće iz centra tebe (igrača koji je ispalio)
+                lerpPositions[fid] = { x: f.source_x || f.x, y: f.source_y || f.y };
+            }
+
+            // Interpolacija: Izleće naglo pa usporava do ciljne tačke
+            // Ubrzana animacija da se sinhronizuje sa serverom (0.45 umesto 0.2)
+            lerpPositions[fid].x += (f.x - lerpPositions[fid].x) * 0.45;
+            lerpPositions[fid].y += (f.y - lerpPositions[fid].y) * 0.45;
+
+            ctx.fillStyle = `hsl(${f.hue}, 80%, 60%)`;
+            ctx.beginPath();
+            ctx.arc(lerpPositions[fid].x, lerpPositions[fid].y, 12, 0, Math.PI * 2); // Veća je od obične hrane
+            ctx.fill();
+            
+            // Dodajemo tamniju ivicu da bi izgledala kao pravi Agar.io eject
+            ctx.strokeStyle = `hsl(${f.hue}, 100%, 35%)`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+    });
+
+            // 5. CRTANJE VIRUSA (Sa pravim bodljama!)
+           (stateViruses || []).forEach(v => {
+                ctx.save();
+                ctx.translate(v.x, v.y);
+                
+                ctx.beginPath();
+                const spikes = 20; 
+                const outerRadius = v.r || 35; // Sada je osnovni radijus 35
+                const innerRadius = outerRadius - 6; // Smanjeno udubljenje bodlji sa 12 na 6
+                
+                for (let i = 0; i < spikes * 2; i++) {
+                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                    const angle = (i * Math.PI) / spikes;
+                    ctx.lineTo(Math.cos(angle) * radius, Math.sin(angle) * radius);
+                }
+                
+                ctx.closePath();
+                
+                ctx.fillStyle = '#33ff33';
+                ctx.fill();
+                ctx.strokeStyle = '#228822';
+                ctx.lineWidth = 3; // Malo tanja linija ivice
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+                
+                ctx.restore();
+            });
+            // --- Čišćenje starih pozicija (Igrači + Ejectovana masa) ---
+    const aktivneStvari = new Set();
+    
+    // 1. Dodajemo aktivne ćelije igrača
+    (stateIgraci || []).forEach(igr => {
+        igr.cells.forEach((cell, index) => {
+            aktivneStvari.add(`${igr.id}_${index}`);
+        });
+    });
+
+    // 2. Dodajemo aktivnu ejectovanu masu
+    (stateFood || []).forEach(f => {
+        if (f.is_ejected && f.id) aktivneStvari.add(f.id);
+    });
+
+    // Obriši iz memorije sve što više ne postoji (pojedeno ili spojeno)
+    Object.keys(lerpPositions).forEach(key => {
+        if (!aktivneStvari.has(key)) {
+            delete lerpPositions[key];
+        }
+    });
+            // 6. CRTANJE IGRAČA (Sa interpolacijom)
+            (stateIgraci || []).forEach(igr => {
+                const isMe = igr.id === myId;
+                
+                igr.cells.forEach((cell, index) => {
+                    // Jedinstveni ID za svaku ćeliju
+                    const cellId = `${igr.id}_${index}`;
+                    
+                    // Ako nemamo lerp poziciju, kreiraj je
+                    // Ako nemamo lerp poziciju, kreiraj je
+                    if (!lerpPositions[cellId]) {
+                        // TRIK ZA ANIMACIJU SPLITA:
+                        const glavnaCelija = lerpPositions[`${igr.id}_0`];
+                        
+                        // Ako ovo nije prva ćelija (znači nastala je splitom) i glavna već postoji
+                        if (index > 0 && glavnaCelija) {
+                            // Neka vizuelno krene iz centra tvoje glavne ćelije!
+                            lerpPositions[cellId] = { x: glavnaCelija.x, y: glavnaCelija.y };
+                        } else {
+                            // Ako je tek ušao u igru, stvori ga normalno
+                            lerpPositions[cellId] = { x: cell.x, y: cell.y };
+                        }
+                    }
+
+                    // Interpolacija (15% po frejmu)
+                    lerpPositions[cellId].x += (cell.x - lerpPositions[cellId].x) * 0.15;
+                    lerpPositions[cellId].y += (cell.y - lerpPositions[cellId].y) * 0.15;
+
+                    ctx.fillStyle = `hsl(${igr.hue}, 80%, 60%)`;
+                    ctx.beginPath();
+                    ctx.arc(lerpPositions[cellId].x, lerpPositions[cellId].y, cell.r, 0, Math.PI * 2);
+                    ctx.globalAlpha = isMe ? 0.9 : 1.0;
+                    ctx.fill();
+                    ctx.globalAlpha = 1.0;
+
+                    // Dinamična veličina fonta (raste sa poluprečnikom ćelije, minimum 12px)
+                    const fontSize = Math.max(12, cell.r * 0.4); 
+
+                    // Ime iznad ćelije
+                    ctx.fillStyle = 'white';
+                    ctx.font = `bold ${fontSize}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle'; // Savršeno centrira tekst po vertikali
+                    ctx.fillText(igr.ime, lerpPositions[cellId].x, lerpPositions[cellId].y);
+                });
+            });
+
+            ctx.restore();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Nova funkcija koja se poziva na klik dugmeta "Započni Igru"
+        function startGame() {
+            document.getElementById('start-overlay').style.display = 'none';
+            connect(); // Tek sada se povezujemo na server i stvaramo igrača!
+        }
+
+        // gameLoop se vrti u pozadini (crta mrežu dok čekamo da klikneš start)
+        gameLoop();
+    </script>
 </body>
 </html>

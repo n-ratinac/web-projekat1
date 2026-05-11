@@ -1,28 +1,21 @@
 import asyncio
-import socket
 import websockets
 import json
 import datetime
 import math
 import random
+import time
 
+# --- KONSTANTE ---
 WORLD = 4000
 FOOD_COUNT = 600
-FOOD_MASS = 20
-FOOD_RADIUS = 2.26  # mass_to_r(1)
-BOT_COUNT = 8
-BOT_SPEED = 0.3
-BOT_DETECTION_RADIUS = 600
-BOT_NAMES = ["Sava", "Sibin", "Djani", "Mili", "Dzoni", "Boris", "Vuk", "Lazar", "Pera", "Mika", "Zika", "Paprika", "JakaSpika"]
+FOOD_MASS = 4.5
+TICK_RATE = 1 / 30
+MERGE_DELAY = 15  # Sekunde pre nego što ćelije mogu da se spoje (Fix #3)
 
-# Svi konektovani igraci: { websocket: { id, ime, hue, alive, cells[], target_x, target_y } }
 connected_clients = {}
-
-# Botovi: { bot_id: { id, ime, hue, alive, cells[], target_x, target_y } }
-bots = {}
-
-# Lista hrane: [ {id, x, y, mass, hue} ]
 food_list = []
+virus_list = []
 food_id_counter = 0
 
 def log(msg):
@@ -30,17 +23,16 @@ def log(msg):
     print(f"[{t}] {msg}")
 
 def mass_to_r(mass):
-    """Ista formula kao u _index.html: sqrt(mass / PI) * 4"""
     return math.sqrt(mass / math.pi) * 4
 
 def normalize_direction(dx, dy):
     magnitude = math.sqrt(dx**2 + dy**2)
-    if magnitude == 0:
+    if magnitude < 5: 
         return 0, 0
     return dx / magnitude, dy / magnitude
 
+# --- HRANA ---
 def spawn_food():
-    """Kreira jedan novi food pellet na nasumičnoj poziciji."""
     global food_id_counter
     food_id_counter += 1
     return {
@@ -54,270 +46,298 @@ def spawn_food():
 def init_food():
     global food_list
     food_list = [spawn_food() for _ in range(FOOD_COUNT)]
-    log(f"Inicijalizovano {FOOD_COUNT} food pellet-a.")
-
-def random_target():
-    return random.uniform(200, WORLD - 200), random.uniform(200, WORLD - 200)
-
-def init_bots():
-    used_names = []
-    for i in range(BOT_COUNT):
-        bot_id = f"bot_{i}"
-        available = [n for n in BOT_NAMES if n not in used_names]
-        name = random.choice(available if available else BOT_NAMES)
-        used_names.append(name)
-        x, y = random.uniform(100, WORLD - 100), random.uniform(100, WORLD - 100)
-        tx, ty = random_target()
-        mass = 1000
-        bots[bot_id] = {
-            "id": bot_id,
-            "ime": name,
-            "hue": random.randint(0, 360),
-            "alive": True,
-            "cells": [{"x": x, "y": y, "mass": mass, "r": mass_to_r(mass)}],
-            "target_x": tx,
-            "target_y": ty
-        }
-    log(f"Inicijalizovano {BOT_COUNT} botova.")
+    log(f"Inicijalizovano {FOOD_COUNT} pellet-a hrane.")
 
 def check_food_collisions(player):
-    """
-    Proverava da li je neka ćelija igrača pojela food pellet.
-    Ako jeste: povećava masu ćelije, uklanja pellet i spawna novi.
-    """
+    global food_list
     eaten = []
+    
     for cell in player["cells"]:
         for pellet in food_list:
+            # Preskačemo hranu ako ju je već pojela neka druga tvoja ćelija (kada si splitovan)
+            if pellet in eaten:
+                continue
+                
             dx = cell["x"] - pellet["x"]
             dy = cell["y"] - pellet["y"]
             dist = math.sqrt(dx**2 + dy**2)
-            if dist < cell["r"] + FOOD_RADIUS:
+            
+            # 1. Uzimamo poluprečnik hrane (15 za izbačenu masu, 5 za obične mrvice)
+            food_r = pellet.get("r", 5)
+            
+            # 2. Sudar se dešava čim se ivice dodirnu
+            if dist < cell["r"] + food_r + 15:
                 eaten.append(pellet)
-                cell["mass"] += pellet["mass"]
+                # 3. Dajemo pravu masu 
+                cell["mass"] += pellet.get("mass", FOOD_MASS)
                 cell["r"] = mass_to_r(cell["mass"])
+                log(f"Pojedena hrana! {player['ime']} sada ima masu: {round(cell['mass'], 1)}")
 
+    # 4. Brisanje pojedene hrane i stvaranje nove
     for pellet in eaten:
-        food_list.remove(pellet)
-        food_list.append(spawn_food())
+        if pellet in food_list:
+            food_list.remove(pellet)
+            
+            # Stvaramo novu mrvicu SAMO ako nismo upravo pojeli izbačenu masu
+            if not pellet.get("is_ejected"):
+                food_list.append(spawn_food())
 
-def move_entity(entity, speed_mult=1.0):
-    for cell in entity["cells"]:
-        dx = entity["target_x"] - cell["x"]
-        dy = entity["target_y"] - cell["y"]
-        dist = math.sqrt(dx**2 + dy**2)
-        if dist < 1:
-            continue
-        norm_x, norm_y = dx / dist, dy / dist
-        speed = min((1100 / math.sqrt(cell["mass"])) * speed_mult, dist)
-        cell["x"] = max(0, min(WORLD, cell["x"] + norm_x * speed))
-        cell["y"] = max(0, min(WORLD, cell["y"] + norm_y * speed))
-
-def check_entity_collisions(entities):
-    """
-    Predator može pojesti prey ćeliju ako:
-      mass_pred > mass_prey * 1.15  i  dist < r_pred - r_prey * 0.3
-    Vraća listu (prey, killer_name) za entitete koji su upravo umrli.
-    """
-    killed = []
-    for i in range(len(entities)):
-        for j in range(len(entities)):
-            if i == j:
-                continue
-            predator = entities[i]
-            prey = entities[j]
-            if not predator["alive"] or not prey["alive"]:
-                continue
-
-            eaten = []
-            for pred_cell in predator["cells"]:
-                for prey_cell in prey["cells"]:
-                    if prey_cell in eaten:
-                        continue
-                    dx = pred_cell["x"] - prey_cell["x"]
-                    dy = pred_cell["y"] - prey_cell["y"]
-                    dist = math.sqrt(dx**2 + dy**2)
-                    if (pred_cell["mass"] > prey_cell["mass"] * 1.15
-                            and dist < pred_cell["r"] - prey_cell["r"] * 0.3):
-                        eaten.append(prey_cell)
-                        pred_cell["mass"] += prey_cell["mass"]
-                        pred_cell["r"] = mass_to_r(pred_cell["mass"])
-
-            for cell in eaten:
-                prey["cells"].remove(cell)
-                log(f"{predator['ime']} pojeo ćeliju od {prey['ime']}")
-
-            if not prey["cells"]:
-                prey["alive"] = False
-                log(f"{prey['ime']} je mrtav (pojeo: {predator['ime']})")
-                killed.append((prey, predator["ime"]))
-
-    return killed
-
-def find_chase_target(bot):
-    """Vraća (x, y) najbliže ćelije igrača koju bot može pojesti, ili None."""
-    best_dist = BOT_DETECTION_RADIUS
-    target = None
-    for player in connected_clients.values():
-        if not player["alive"]:
-            continue
-        for bot_cell in bot["cells"]:
-            for player_cell in player["cells"]:
-                if bot_cell["mass"] > player_cell["mass"] * 1.15:
-                    dx = bot_cell["x"] - player_cell["x"]
-                    dy = bot_cell["y"] - player_cell["y"]
-                    dist = math.sqrt(dx**2 + dy**2)
-                    if dist < best_dist:
-                        best_dist = dist
-                        target = (player_cell["x"], player_cell["y"])
-    return target
-
-async def game_loop():
-    while True:
-        # Pomeri igrače
-        for player in list(connected_clients.values()):
-            if not player["alive"]:
-                continue
-            move_entity(player)
-            check_food_collisions(player)
-
-        # Pomeri botove
-        for bot in bots.values():
-            if not bot["alive"]:
-                continue
-
-            chase = find_chase_target(bot)
-            if chase:
-                bot["target_x"], bot["target_y"] = chase
-            else:
-                cell = bot["cells"][0]
-                dx = bot["target_x"] - cell["x"]
-                dy = bot["target_y"] - cell["y"]
+# --- LOGIKA SPAJANJA (Fix #3) ---
+def check_internal_merges(player):
+    """Logika koja spaja razdvojene ćelije istog igrača nakon MERGE_DELAY sekundi."""
+    if len(player["cells"]) < 2: return
+    
+    now = time.time() # Koristimo sekunde umesto datetime
+    i = 0
+    while i < len(player["cells"]):
+        j = i + 1
+        while j < len(player["cells"]):
+            c1 = player["cells"][i]
+            c2 = player["cells"][j]
+            
+            # Provera da li su obe ćelije spremne za spajanje (koristeći obične brojeve)
+            if now > c1.get("merge_at", 0) and now > c2.get("merge_at", 0):
+                dx = c1["x"] - c2["x"]
+                dy = c1["y"] - c2["y"]
                 dist = math.sqrt(dx**2 + dy**2)
-                if dist < 60 or random.random() < 0.02:
-                    bot["target_x"], bot["target_y"] = random_target()
+                
+                # Ako se dodiruju dovoljno blizu, spoji ih
+                if dist < (c1["r"] + c2["r"]) * 0.8:
+                    c1["mass"] += c2["mass"]
+                    c1["r"] = mass_to_r(c1["mass"])
+                    player["cells"].pop(j)
+                    log(f"Ćelije igrača {player['ime']} su se ponovo spojile!")
+                    continue
+            j += 1
+        i += 1
+def resolve_self_collisions(player):
+    """Sprečava da ćelije istog igrača prelaze jedna preko druge dok se ne spoje."""
+    cells = player["cells"]
+    now = time.time()
+    
+    # Proveravamo svaki par tvojih ćelija
+    for i in range(len(cells)):
+        for j in range(i + 1, len(cells)):
+            c1 = cells[i]
+            c2 = cells[j]
+            
+            # Ako su OBA tajmera istekla, pusti ih da se preklapaju i spoje!
+            if now > c1.get("merge_at", 0) and now > c2.get("merge_at", 0):
+                continue
+                
+            dx = c1["x"] - c2["x"]
+            dy = c1["y"] - c2["y"]
+            dist = math.sqrt(dx**2 + dy**2)
+            min_dist = c1["r"] + c2["r"] # Minimalna udaljenost (zbir poluprečnika)
+            
+            # Ako su preblizu (preklapaju se)
+            if dist < min_dist:
+                if dist == 0: # Ako su bukvalno u istom pikselu (da izbegnemo deljenje sa nulom)
+                    dx, dy = random.uniform(-1, 1), random.uniform(-1, 1)
+                    dist = math.sqrt(dx**2 + dy**2)
+                    
+                overlap = min_dist - dist
+                nx = dx / dist
+                ny = dy / dist
+                
+                # Odgurni prvu ćeliju na jednu stranu, a drugu na suprotnu
+                c1["x"] += nx * (overlap / 2)
+                c1["y"] += ny * (overlap / 2)
+                c2["x"] -= nx * (overlap / 2)
+                c2["y"] -= ny * (overlap / 2)
 
-            move_entity(bot, BOT_SPEED)
-            check_food_collisions(bot)
+# --- KOLIZIJA IZMEĐU IGRAČA ---
+async def check_player_collisions():
+    svi_klijenti = list(connected_clients.keys())
+    for ws_predator in svi_klijenti:
+        predator = connected_clients[ws_predator]
+        if not predator["alive"]: continue
+        for ws_prey in svi_klijenti:
+            prey = connected_clients[ws_prey]
+            if not prey["alive"] or predator["id"] == prey["id"]: continue
+            for p_cell in predator["cells"]:
+                for prey_cell in prey["cells"][:]:
+                    dx = p_cell["x"] - prey_cell["x"]
+                    dy = p_cell["y"] - prey_cell["y"]
+                    dist = math.sqrt(dx**2 + dy**2)
+                    if p_cell["mass"] > prey_cell["mass"] * 1.15:
+                        if dist < p_cell["r"] - prey_cell["r"] * 0.3:
+                            log(f"{predator['ime']} je pojeo ćeliju igrača {prey['ime']}")
+                            p_cell["mass"] += prey_cell["mass"]
+                            p_cell["r"] = mass_to_r(p_cell["mass"])
+                            prey["cells"].remove(prey_cell)
+                            if len(prey["cells"]) == 0:
+                                prey["alive"] = False
+                                log(f"Igrač {prey['ime']} je pojeden!")
+                                try:
+                                    await ws_prey.send(json.dumps({"type": "dead", "killer_name": predator["ime"]}))
+                                except: pass
 
-        # Proveri jedenje između svih entiteta
-        all_entities = (
-            [p for p in connected_clients.values()] +
-            [b for b in bots.values()]
-        )
-        killed = check_entity_collisions(all_entities)
+def split_player(player):
+    if len(player["cells"]) >= 16: return 
+    new_cells = []
+    # Postavljamo vreme spajanja kao običan broj (timestamp)
+    merge_ready_time = time.time() + MERGE_DELAY
 
-        # Pošalji dead poruku igračima koji su upravo umrli
-        if killed:
-            ws_by_id = {v["id"]: ws for ws, v in connected_clients.items()}
-            for prey, killer_name in killed:
-                ws = ws_by_id.get(prey["id"])
-                if ws:
-                    try:
-                        await ws.send(json.dumps({"type": "dead", "killer_name": killer_name}))
-                    except websockets.exceptions.ConnectionClosed:
-                        pass
+    for cell in player["cells"]:
+        if cell["mass"] >= 72: 
+            half_mass = cell["mass"] / 2
+            cell["mass"] = half_mass
+            cell["r"] = mass_to_r(half_mass)
+            cell["merge_at"] = merge_ready_time 
 
-        if connected_clients:
-            lista_igraca = (
-                [p for p in connected_clients.values() if p["alive"]] +
-                [b for b in bots.values() if b["alive"]]
-            )
-            poruka = json.dumps({
-                "type": "game_state",
-                "igraci": lista_igraca,
-                "hrana": food_list
+            dx = player["target_x"] - cell["x"]
+            dy = player["target_y"] - cell["y"]
+            nx, ny = normalize_direction(dx, dy)
+
+            new_cells.append({
+                "x": cell["x"] + nx * cell["r"] * 2.5,
+                "y": cell["y"] + ny * cell["r"] * 2.5,
+                "mass": half_mass,
+                "r": mass_to_r(half_mass),
+                "hue": player["hue"],
+                "merge_at": merge_ready_time 
             })
+            log(f"Split! Igrac {player['ime']} se podelio na {half_mass} mase.")
+    player["cells"].extend(new_cells)
 
-            for ws in list(connected_clients.keys()):
-                try:
-                    await ws.send(poruka)
-                except websockets.exceptions.ConnectionClosed:
-                    pass
-
-        await asyncio.sleep(1 / 20)
-
+def eject_mass(player):
+    global food_list
+    for cell in player["cells"]:
+        if cell["mass"] > 35:
+            cell["mass"] -= 18
+            cell["r"] = mass_to_r(cell["mass"])
+            dx, dy = player["target_x"] - cell["x"], player["target_y"] - cell["y"]
+            nx, ny = normalize_direction(dx, dy)
+            # POVEĆANA UDALJENOST na 200 (još preko 50% više nego pre)
+            food_list.append({
+                "id": random.randint(100000, 999999),
+                "x": cell["x"] + nx * (cell["r"] + 150), # Smanjeno sa 200 da se izbegne duh-efekat
+                "y": cell["y"] + ny * (cell["r"] + 150),
+                "mass": 15, 
+                "r": 15, # NOVO: Server sada zna da je ova hrana fizički veća!
+                "hue": player["hue"],
+                "is_ejected": True,
+                "source_x": cell["x"],      
+                "source_y": cell["y"]       
+            })
+            log(f"Masa izbačena daleko za igrača {player['ime']}.")
+            break
 
 async def handle_client(websocket):
     client_ip = websocket.remote_address[0]
     player_id = str(id(websocket))
-
-    log(f"Nova konekcija od: {client_ip} (id: {player_id})")
+    log(f"Nova konekcija: {client_ip} (ID: {player_id})")
 
     start_x = random.uniform(100, WORLD - 100)
     start_y = random.uniform(100, WORLD - 100)
-    start_mass = 1000
-
+    
     connected_clients[websocket] = {
         "id": player_id,
-        "ime": "Igrac",
+        "ime": "Gost",
         "hue": random.randint(0, 360),
         "alive": True,
-        "cells": [
-            {
-                "x": start_x,
-                "y": start_y,
-                "mass": start_mass,
-                "r": mass_to_r(start_mass)
-            }
-        ],
+        "cells": [{"x": start_x, "y": start_y, "mass": 50, "r": mass_to_r(50)}],
         "target_x": start_x,
         "target_y": start_y
     }
 
-    try:
-        async for message in websocket:
-            try:
+    async def primaj_poruke():
+        try:
+            async for message in websocket:
                 data = json.loads(message)
-
+                player = connected_clients[websocket]
                 if data["type"] == "join":
-                    connected_clients[websocket]["ime"] = data.get("ime", "Igrac")
-                    log(f"Igrac se pridružio: {connected_clients[websocket]['ime']}")
-                    await websocket.send(json.dumps({
-                        "type": "welcome",
-                        "id": player_id
-                    }))
-
+                    player["ime"] = data.get("ime", "Igrac")
+                    log(f"Igrac '{player['ime']}' se pridružio.")
+                    await websocket.send(json.dumps({"type": "welcome", "id": player_id}))
                 elif data["type"] == "move":
-                    connected_clients[websocket]["target_x"] = data["x"]
-                    connected_clients[websocket]["target_y"] = data["y"]
-
+                    player["target_x"], player["target_y"] = data["x"], data["y"]
+                elif data["type"] == "split":
+                    split_player(player)
+                elif data["type"] == "eject":
+                    eject_mass(player)
                 elif data["type"] == "respawn":
-                    player = connected_clients[websocket]
-                    x = random.uniform(100, WORLD - 100)
-                    y = random.uniform(100, WORLD - 100)
-                    mass = 50
+                    # Resetujemo status igrača na početne vrednosti
+                    start_x = random.uniform(100, WORLD - 100)
+                    start_y = random.uniform(100, WORLD - 100)
                     player["alive"] = True
-                    player["cells"] = [{"x": x, "y": y, "mass": mass, "r": mass_to_r(mass)}]
-                    player["target_x"] = x
-                    player["target_y"] = y
-                    log(f"Igrac {player['ime']} se respawnuo")
+                    player["target_x"] = start_x
+                    player["target_y"] = start_y
+                    player["cells"] = [{
+                        "x": start_x,
+                        "y": start_y,
+                        "mass": 50,
+                        "r": mass_to_r(50)
+                    }]
+                    log(f"Igrač '{player['ime']}' se vratio u igru (Respawn).")
+        except: pass
 
-            except json.JSONDecodeError:
-                log(f"Nevalidan JSON od {client_ip}")
+    async def game_loop():
+        try:
+            while True:
+                player = connected_clients[websocket]
+                if player["alive"]:
+                    # Pomeranje
+                    for cell in player["cells"]:
+                        dx, dy = player["target_x"] - cell["x"], player["target_y"] - cell["y"]
+                        nx, ny = normalize_direction(dx, dy)
+                        speed = 200 / math.sqrt(cell["mass"])
+                        cell["x"] = max(0, min(WORLD, cell["x"] + nx * speed))
+                        cell["y"] = max(0, min(WORLD, cell["y"] + ny * speed))
 
-    except websockets.exceptions.ConnectionClosed:
-        log(f"[{client_ip}] Klijent se diskonektovao")
-    finally:
-        connected_clients.pop(websocket, None)
-        log(f"Igrac {player_id} uklonjen. Online: {len(connected_clients)}")
+                    resolve_self_collisions(player)    
+                    check_food_collisions(player)
+                    check_internal_merges(player) # Aktivacija Fix #3
+                    
+                    # Virusi
+                    for cell in player["cells"][:]:
+                        for virus in virus_list:
+                            dist = math.sqrt((cell["x"]-virus["x"])**2 + (cell["y"]-virus["y"])**2)
+                            if cell["mass"] > 133 and dist < cell["r"] + virus["r"] * 0.2:
+                                log(f"VIRUS! Igrač {player['ime']} se raspao.")
+                                split_player(player)
 
+                    await check_player_collisions()
 
-def get_local_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                lista_igraca = [p for p in connected_clients.values() if p["alive"]]
+                state_msg = json.dumps({
+                    "type": "game_state",
+                    "igraci": lista_igraca,
+                    "hrana": food_list,
+                    "virusi": virus_list
+                })
+                await websocket.send(state_msg)
+                await asyncio.sleep(TICK_RATE)
+        except: pass
+
     try:
-        s.connect(("10.0.5.101", 80))
-        return s.getsockname()[0]
-    except Exception:
-        return "127.0.0.1"
+        await asyncio.gather(primaj_poruke(), game_loop())
     finally:
-        s.close()
+        # Fix #1: Logovanje imena umesto ID-a
+        if websocket in connected_clients:
+            ime_igraca = connected_clients[websocket]["ime"]
+            del connected_clients[websocket]
+            log(f"Igrac '{ime_igraca}' je napustio igru. Preostalo: {len(connected_clients)}")
+
+def init_viruses():
+    global virus_list
+    virus_list = []
+    for _ in range(18):
+        virus_list.append({
+            "x": random.uniform(200, WORLD-200), 
+            "y": random.uniform(200, WORLD-200), 
+            "mass": 100, 
+            "r": 35  # SMANJENO SA 60 NA 35 (Igrač puca tek kada je veći od ovoga)
+        })
+    log("Inicijalizovano 18 virusa.")
 
 async def main():
     init_food()
-    init_bots()
-    log("WebSocket server startovan na ws://0.0.0.0:8765")
+    init_viruses() 
     async with websockets.serve(handle_client, "0.0.0.0", 8765):
-        asyncio.create_task(game_loop())
+        log("WebSocket server startovan na portu 8765")
         await asyncio.Future()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
